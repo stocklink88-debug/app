@@ -105,15 +105,28 @@ def _is_lan_address(ip: str) -> bool:
     )
 
 
+def _in_container() -> bool:
+    return Path("/.dockerenv").exists()
+
+
 def _log_addresses() -> None:
     port = _listen_port()
     log.info("Abre la app en:  http://localhost:%d", port)
-    if ip := _lan_ip():
+
+    if _in_container():
+        # Dentro de Docker la IP detectada es la de la red interna del
+        # contenedor y no sirve desde el móvil: hay que usar la del anfitrión.
+        log.info(
+            "Desde el móvil: usa la IP de tu ordenador en la red wifi "
+            "(ipconfig en Windows, ifconfig o ip addr en macOS/Linux) "
+            "con el puerto %d",
+            port,
+        )
+    elif ip := _lan_ip():
         log.info("Desde el móvil (misma red wifi):  http://%s:%d", ip, port)
-        if not settings.access_password:
-            log.info(
-                "Consejo: si la red no es de confianza, define ACCESS_PASSWORD en .env"
-            )
+
+    if not settings.access_password:
+        log.info("Consejo: si la red no es de confianza, define ACCESS_PASSWORD en .env")
 
 
 app = FastAPI(title="ViralClips", version="1.0.0", lifespan=lifespan)

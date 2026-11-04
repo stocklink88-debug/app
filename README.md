@@ -64,6 +64,30 @@ cp .env.example .env
 docker compose up --build    # http://localhost:8000
 ```
 
+### En Windows
+
+El `Makefile` usa rutas de Unix, así que en PowerShell no funciona. Usa Docker
+Desktop (requiere WSL2, que su instalador configura):
+
+```powershell
+git clone -b claude/viral-clips-app-zzqjc9 https://github.com/stocklink88-debug/app.git viralclips
+cd viralclips
+Copy-Item .env.example .env
+notepad .env                 # pon aquí tu GROQ_API_KEY
+docker compose up --build
+```
+
+La primera construcción descarga cerca de 1 GB y tarda varios minutos; las
+siguientes son casi instantáneas. Luego abres <http://localhost:8000>.
+
+Para entrar desde el móvil necesitas la IP del ordenador: ejecuta `ipconfig` y
+busca la *Dirección IPv4* (algo como `192.168.1.42`); en el móvil abres
+`http://192.168.1.42:8000`. La primera vez Windows preguntará si permites el
+acceso: hay que aceptar para redes privadas.
+
+Si prefieres no usar Docker, la alternativa en Windows es instalar todo dentro
+de WSL2 y seguir los pasos de Linux.
+
 ## Usarlo desde el móvil
 
 En un teléfono no puedes instalar nada, así que la vía es desplegarlo en un

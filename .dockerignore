@@ -1,0 +1,30 @@
+# Sin esto, el contexto de construcción arrastra cientos de MB y, peor aún,
+# los node_modules y el .venv del equipo anfitrión acaban dentro de la imagen.
+.venv/
+venv/
+**/node_modules/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Datos y artefactos locales
+data/
+backend/data/
+backend/models/
+frontend/dist/
+backend/viralclips/static/
+*.tsbuildinfo
+*.log
+
+# Secretos y metadatos
+.env
+.env.local
+.git/
+.gitignore
+.github/
+
+# Documentación y pruebas: no hacen falta en tiempo de ejecución
+README.md
+Makefile
+docker-compose.yml
