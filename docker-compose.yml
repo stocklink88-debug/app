@@ -1,0 +1,16 @@
+services:
+  viralclips:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - viralclips-data:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+    restart: unless-stopped
+
+volumes:
+  viralclips-data:
