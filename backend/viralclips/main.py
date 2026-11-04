@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
+import os
 import re
 import secrets
 import shutil
+import socket
+import sys
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -51,8 +55,65 @@ async def lifespan(_: FastAPI):
         "sí" if caps["llm"]["enabled"] else "no (heurística)",
         "sí" if caps["face_tracking"] else "no (saliencia)",
     )
+    _log_addresses()
     yield
     worker.stop_workers()
+
+
+def _listen_port(default: int = 8000) -> int:
+    """Puerto en el que escucha uvicorn, sólo para poder mostrarlo."""
+    if (env := os.getenv("PORT", "")).isdigit():
+        return int(env)
+    argv = sys.argv
+    for flag in ("--port", "-p"):
+        if flag in argv:
+            idx = argv.index(flag) + 1
+            if idx < len(argv) and argv[idx].isdigit():
+                return int(argv[idx])
+    return default
+
+
+def _lan_ip() -> str | None:
+    """IP de este equipo en la red local, si la tiene.
+
+    `connect` sobre UDP no envía ningún paquete: sólo hace que el sistema
+    elija la interfaz de salida, que es la dirección que queremos mostrar.
+    Sólo devolvemos direcciones de rango privado: si la máquina tiene IP
+    pública (un servidor), anunciarla como "tu wifi" sería engañoso.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(0.2)
+            sock.connect(("8.8.8.8", 53))
+            ip = sock.getsockname()[0]
+    except OSError:
+        return None
+
+    return ip if _is_lan_address(ip) else None
+
+
+def _is_lan_address(ip: str) -> bool:
+    """¿Es una dirección de red local que tenga sentido enseñar al usuario?"""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return (
+        address.is_private
+        and not address.is_loopback
+        and not address.is_link_local
+    )
+
+
+def _log_addresses() -> None:
+    port = _listen_port()
+    log.info("Abre la app en:  http://localhost:%d", port)
+    if ip := _lan_ip():
+        log.info("Desde el móvil (misma red wifi):  http://%s:%d", ip, port)
+        if not settings.access_password:
+            log.info(
+                "Consejo: si la red no es de confianza, define ACCESS_PASSWORD en .env"
+            )
 
 
 app = FastAPI(title="ViralClips", version="1.0.0", lifespan=lifespan)

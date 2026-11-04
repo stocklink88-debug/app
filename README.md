@@ -38,6 +38,18 @@ make install                 # dependencias + modelo de detección de caras
 make run                     # http://localhost:8000
 ```
 
+Al arrancar, el servidor imprime las direcciones:
+
+```
+Abre la app en:  http://localhost:8000
+Desde el móvil (misma red wifi):  http://192.168.1.42:8000
+```
+
+La segunda es la útil para **abrirla desde el móvil** sin desplegar nada: el
+teléfono y el ordenador tienen que estar en la misma red. Si el navegador del
+móvil no conecta, suele ser el cortafuegos del ordenador bloqueando el puerto
+8000.
+
 Para desarrollo, con recarga en caliente, en dos terminales:
 
 ```bash
@@ -171,7 +183,7 @@ backend/
       tracking.py         detección de caras, suavizado y paneo
       subtitles.py        generación de ASS con resaltado por palabra
       render.py           montaje final con ffmpeg
-  tests/                  86 tests (13 renderizan vídeo real)
+  tests/                  97 tests (13 renderizan vídeo real)
 ```
 
 El backend es un único proceso: FastAPI sirve la API y el frontend compilado, y
@@ -225,7 +237,7 @@ curl -X POST http://localhost:8000/api/projects \
 ## Tests
 
 ```bash
-make test        # 73 tests, menos de un segundo
+make test        # 84 tests, menos de un segundo
 make test-slow   # 13 tests que renderizan vídeo con ffmpeg (~30 s)
 ```
 

@@ -181,3 +181,46 @@ def test_query_token_grants_access(locked_client):
 def test_no_password_means_open_api(client):
     assert client.get("/api/auth/status").json() == {"required": False}
     assert client.get("/api/capabilities").status_code == 200
+
+
+# --------------------------------------------------------------------------
+# Dirección que se muestra al arrancar
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("ip,usable", [
+    ("192.168.1.42", True),     # wifi doméstica típica
+    ("10.0.0.5", True),         # red privada clase A
+    ("172.16.3.9", True),       # red privada clase B
+    ("172.32.0.1", False),      # fuera del rango privado 172.16/12
+    ("127.0.0.1", False),       # loopback: no sirve desde el móvil
+    ("169.254.10.1", False),    # link-local (sin DHCP)
+    ("8.8.8.8", False),         # pública: anunciarla como "tu wifi" engaña
+    ("no-es-una-ip", False),
+])
+def test_lan_address_filter(ip, usable):
+    from viralclips.main import _is_lan_address
+
+    assert _is_lan_address(ip) is usable
+
+
+def test_listen_port_reads_command_line(monkeypatch):
+    from viralclips import main
+
+    monkeypatch.delenv("PORT", raising=False)
+    monkeypatch.setattr(main.sys, "argv", ["uvicorn", "app", "--port", "9123"])
+    assert main._listen_port() == 9123
+
+
+def test_listen_port_prefers_env(monkeypatch):
+    from viralclips import main
+
+    monkeypatch.setenv("PORT", "4567")
+    assert main._listen_port() == 4567
+
+
+def test_listen_port_falls_back_to_default(monkeypatch):
+    from viralclips import main
+
+    monkeypatch.delenv("PORT", raising=False)
+    monkeypatch.setattr(main.sys, "argv", ["uvicorn", "app"])
+    assert main._listen_port() == 8000
