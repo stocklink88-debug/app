@@ -135,3 +135,49 @@ def test_rerender_rejects_unknown_aspect(client):
     r = client.post(f"/api/clips/{cid}/rerender", json={"aspect": "3:7"})
     assert r.status_code == 400
     db.delete_project(pid)
+
+
+# --------------------------------------------------------------------------
+# Contraseña de acceso (ACCESS_PASSWORD)
+# --------------------------------------------------------------------------
+
+@pytest.fixture
+def locked_client(monkeypatch):
+    """Cliente contra una API con contraseña activada."""
+    from viralclips import main
+
+    monkeypatch.setattr(main.settings, "access_password", "clave-secreta")
+    with TestClient(main.app) as c:
+        yield c
+
+
+def test_auth_status_is_public(locked_client):
+    assert locked_client.get("/api/auth/status").json() == {"required": True}
+    assert locked_client.get("/api/health").status_code == 200
+
+
+def test_protected_routes_reject_missing_token(locked_client):
+    for path in ("/api/capabilities", "/api/projects", "/api/clips/clip_x/video"):
+        assert locked_client.get(path).status_code == 401, path
+
+
+def test_protected_routes_reject_wrong_token(locked_client):
+    r = locked_client.get("/api/capabilities", headers={"X-Access-Token": "otra"})
+    assert r.status_code == 401
+
+
+def test_header_token_grants_access(locked_client):
+    r = locked_client.get("/api/capabilities", headers={"X-Access-Token": "clave-secreta"})
+    assert r.status_code == 200
+    assert r.json()["auth_required"] is True
+
+
+def test_query_token_grants_access(locked_client):
+    """Lo necesitan <video>, <img> y EventSource, que no mandan cabeceras."""
+    r = locked_client.get("/api/capabilities?access_token=clave-secreta")
+    assert r.status_code == 200
+
+
+def test_no_password_means_open_api(client):
+    assert client.get("/api/auth/status").json() == {"required": False}
+    assert client.get("/api/capabilities").status_code == 200

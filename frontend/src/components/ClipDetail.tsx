@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CaptionStyle, Clip, Layout } from '../lib/api'
-import { api, formatTimestamp } from '../lib/api'
+import { api, formatTimestamp, withToken } from '../lib/api'
 import { IconCheck, IconCopy, IconDownload, IconRefresh, IconX } from './Icons'
 import ScoreRing from './ScoreRing'
 
@@ -131,8 +131,8 @@ export default function ClipDetail({ clip, onClose, onChanged }: Props) {
                 {current.video_url && current.status === 'ready' ? (
                   <video
                     key={`${current.video_url}-${current.status}`}
-                    src={current.video_url} controls playsInline
-                    poster={current.thumb_url ?? undefined}
+                    src={withToken(current.video_url)} controls playsInline
+                    poster={current.thumb_url ? withToken(current.thumb_url) : undefined}
                     className="w-full aspect-[9/16] object-contain bg-black"
                   />
                 ) : (
@@ -145,12 +145,12 @@ export default function ClipDetail({ clip, onClose, onChanged }: Props) {
 
               <div className="flex gap-2 mt-3">
                 <a
-                  href={`/api/clips/${current.id}/download`} download
+                  href={withToken(`/api/clips/${current.id}/download`)} download
                   className={`btn-primary flex-1 ${current.status !== 'ready' ? 'pointer-events-none opacity-40' : ''}`}
                 >
                   <IconDownload /> Descargar
                 </a>
-                <a href={`/api/clips/${current.id}/srt`} download className="btn-ghost" title="Descargar subtítulos">
+                <a href={withToken(`/api/clips/${current.id}/srt`)} download className="btn-ghost" title="Descargar subtítulos">
                   .srt
                 </a>
               </div>

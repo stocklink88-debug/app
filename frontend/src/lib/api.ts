@@ -66,6 +66,7 @@ export interface Project {
 }
 
 export interface Capabilities {
+  auth_required?: boolean
   transcription: {
     provider: string
     has_text: boolean
@@ -92,8 +93,44 @@ export interface ProgressEvent {
   error?: string | null
 }
 
+/* ---------- Acceso protegido por contraseña (opcional) ---------- */
+
+const TOKEN_KEY = 'viralclips.token'
+
+export function getToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function setToken(token: string): void {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* modo privado del navegador: se queda sólo en memoria */
+  }
+}
+
+/** Las etiquetas <video>/<img> y EventSource no mandan cabeceras: va en la URL. */
+export function withToken(url: string): string {
+  const token = getToken()
+  if (!token) return url
+  return `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`
+}
+
+/** Se lanza cuando la contraseña falta o no es válida. */
+export class UnauthorizedError extends Error {}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init)
+  const token = getToken()
+  const headers = new Headers(init?.headers)
+  if (token) headers.set('X-Access-Token', token)
+
+  const res = await fetch(path, { ...init, headers })
+  if (res.status === 401) throw new UnauthorizedError('Contraseña incorrecta o ausente.')
   if (!res.ok) {
     let detail = `Error ${res.status}`
     try {
@@ -108,6 +145,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  authStatus: () => request<{ required: boolean }>('/api/auth/status'),
+
   capabilities: () => request<Capabilities>('/api/capabilities'),
 
   listProjects: () => request<Project[]>('/api/projects'),
@@ -161,7 +200,7 @@ export function subscribeProgress(
   projectId: string,
   onEvent: (e: ProgressEvent) => void,
 ): () => void {
-  const source = new EventSource(`/api/projects/${projectId}/events`)
+  const source = new EventSource(withToken(`/api/projects/${projectId}/events`))
   source.addEventListener('progress', (ev) => {
     try {
       onEvent(JSON.parse((ev as MessageEvent).data))

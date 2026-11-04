@@ -1,5 +1,5 @@
 import type { Clip } from '../lib/api'
-import { formatTimestamp } from '../lib/api'
+import { formatTimestamp, withToken } from '../lib/api'
 import { IconPlay, IconWarning } from './Icons'
 import ScoreRing from './ScoreRing'
 
@@ -24,7 +24,7 @@ export default function ClipCard({ clip, index, onOpen }: Props) {
       <div className="relative aspect-[9/16] bg-ink-900 overflow-hidden">
         {clip.thumb_url ? (
           <img
-            src={clip.thumb_url} alt={clip.title} loading="lazy"
+            src={withToken(clip.thumb_url)} alt={clip.title} loading="lazy"
             className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
           />
         ) : (

@@ -53,6 +53,9 @@ class Settings(BaseSettings):
 
     # --- Servidor ---
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Si se define, la API exige esta contraseña. Imprescindible si publicas
+    # la app en internet: si no, cualquiera con la URL gasta tus créditos.
+    access_password: str | None = None
 
     @property
     def uploads_dir(self) -> Path:
@@ -110,6 +113,7 @@ class Settings(BaseSettings):
             },
             "face_tracking": self.yunet_path.exists(),
             "subtitle_font": self.subtitle_font,
+            "auth_required": bool(self.access_password),
         }
 
 

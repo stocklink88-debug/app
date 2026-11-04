@@ -52,6 +52,43 @@ cp .env.example .env
 docker compose up --build    # http://localhost:8000
 ```
 
+## Usarlo desde el móvil
+
+En un teléfono no puedes instalar nada, así que la vía es desplegarlo en un
+servidor y abrirlo en el navegador. Todo el proceso se hace desde la web:
+
+1. Entra en [render.com](https://render.com) y crea cuenta con GitHub.
+2. **New → Blueprint**, elige este repositorio y la rama. Render lee
+   `render.yaml` y configura el servicio solo.
+3. En las variables de entorno del servicio, rellena `GROQ_API_KEY` y, si
+   quieres, `ANTHROPIC_API_KEY`. Render genera `ACCESS_PASSWORD` por ti: la
+   encuentras en la pestaña *Environment*.
+4. Abre la URL que te da Render e introduce esa contraseña.
+
+Railway o Fly.io sirven igual: ambos detectan el `Dockerfile` del repositorio.
+
+**Desde el móvil, usa el modo URL en vez de subir archivos.** Pegas el enlace
+del vídeo y lo descarga el servidor, que va mucho más rápido que subir un
+archivo grande por datos móviles.
+
+**Sobre el plan:** montar vídeo consume CPU y memoria. El plan `starter` de
+Render (512 MB) aguanta a 720p pero va lento; para 1080p cómodo necesitas
+`standard` (2 GB). Cámbialo en `render.yaml` antes de desplegar. El plan
+gratuito no admite disco persistente, así que perderías los proyectos en cada
+reinicio.
+
+### Contraseña de acceso
+
+Si publicas la app en internet, **define `ACCESS_PASSWORD`**. Sin ella la API
+queda abierta y cualquiera con la URL puede subir vídeos y gastar tus créditos.
+
+Con la contraseña puesta, toda la API exige el token (por cabecera
+`X-Access-Token` o por parámetro `?access_token=`, que es lo que necesitan las
+etiquetas `<video>` y los eventos SSE). La interfaz muestra una pantalla de
+acceso y recuerda la sesión en el navegador.
+
+En local déjala vacía y no te pedirá nada.
+
 ## Configuración
 
 Todo vive en `.env` y **todo es opcional**: sin ninguna clave la app arranca y
@@ -134,7 +171,7 @@ backend/
       tracking.py         detección de caras, suavizado y paneo
       subtitles.py        generación de ASS con resaltado por palabra
       render.py           montaje final con ffmpeg
-  tests/                  80 tests (13 renderizan vídeo real)
+  tests/                  86 tests (13 renderizan vídeo real)
 ```
 
 El backend es un único proceso: FastAPI sirve la API y el frontend compilado, y
@@ -160,6 +197,7 @@ suavizado, para que la cámara salte en seco en el corte en lugar de barrer.
 
 | Método | Ruta | Para qué |
 |---|---|---|
+| `GET` | `/api/auth/status` | si el servidor exige contraseña (público) |
 | `GET` | `/api/capabilities` | qué proveedores hay configurados |
 | `POST` | `/api/projects` | crear proyecto (`file` o `url`, `subtitles` opcional) |
 | `GET` | `/api/projects` | lista de proyectos |
@@ -187,7 +225,7 @@ curl -X POST http://localhost:8000/api/projects \
 ## Tests
 
 ```bash
-make test        # 67 tests, menos de un segundo
+make test        # 73 tests, menos de un segundo
 make test-slow   # 13 tests que renderizan vídeo con ffmpeg (~30 s)
 ```
 

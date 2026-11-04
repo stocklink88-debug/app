@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ClipCard from './components/ClipCard'
+import LoginScreen from './components/LoginScreen'
 import ClipDetail from './components/ClipDetail'
 import { IconBack, IconFilm, IconRefresh, IconSparkles, IconTrash } from './components/Icons'
 import PipelineProgress from './components/PipelineProgress'
 import UploadForm from './components/UploadForm'
 import type { Capabilities, Clip, Project, ProjectOptions } from './lib/api'
-import { api, formatDuration, subscribeProgress } from './lib/api'
+import { api, formatDuration, getToken, setToken, subscribeProgress, UnauthorizedError } from './lib/api'
 
 export default function App() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
@@ -14,18 +15,48 @@ export default function App() {
   const [openClip, setOpenClip] = useState<Clip | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [locked, setLocked] = useState<boolean | null>(null)
   const unsubscribe = useRef<(() => void) | null>(null)
 
-  useEffect(() => {
-    api.capabilities().then(setCapabilities).catch(() => setCapabilities(null))
-    refreshProjects()
-    return () => unsubscribe.current?.()
+  const boot = useCallback(async () => {
+    try {
+      const caps = await api.capabilities()
+      setCapabilities(caps)
+      setLocked(false)
+      refreshProjects()
+    } catch (e) {
+      if (e instanceof UnauthorizedError) {
+        setLocked(true)
+        return
+      }
+      // El servidor responde pero sin capacidades: seguimos sin bloquear.
+      setCapabilities(null)
+      setLocked(false)
+    }
   }, [])
+
+  useEffect(() => {
+    api.authStatus()
+      .then(({ required }) => {
+        if (required && !getToken()) {
+          setLocked(true)
+          return
+        }
+        boot()
+      })
+      .catch(() => boot())
+    return () => unsubscribe.current?.()
+  }, [boot])
 
   async function refreshProjects() {
     try {
       setProjects(await api.listProjects())
-    } catch { /* la lista es secundaria */ }
+    } catch (e) {
+      if (e instanceof UnauthorizedError) {
+        setToken('')
+        setLocked(true)
+      }
+    }
   }
 
   const loadProject = useCallback(async (id: string) => {
@@ -120,6 +151,16 @@ export default function App() {
   }
 
   const readyClips = active?.clips.filter((c) => c.status === 'ready').length ?? 0
+
+  if (locked === null) {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <div className="w-7 h-7 rounded-full border-2 border-accent/30 border-t-accent animate-spin" />
+      </div>
+    )
+  }
+
+  if (locked) return <LoginScreen onUnlocked={boot} />
 
   return (
     <div className="min-h-screen">

@@ -1,0 +1,35 @@
+# Despliegue en Render (https://render.com) — "Blueprint".
+# Render lee este archivo del repositorio y crea el servicio solo.
+#
+# El plan marca la diferencia: montar vídeo consume CPU y memoria.
+#   starter  ($7/mes, 512 MB) → funciona a 720p, lento
+#   standard ($25/mes, 2 GB)  → cómodo a 1080p
+# Cambia `plan` abajo antes de desplegar si quieres más músculo.
+services:
+  - type: web
+    name: viralclips
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    # Disco persistente: sin él, los proyectos desaparecen en cada reinicio.
+    disk:
+      name: viralclips-data
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      # Render genera una contraseña aleatoria; la ves en el panel del servicio.
+      - key: ACCESS_PASSWORD
+        generateValue: true
+      # Estas se rellenan a mano en el panel (sync: false = no van en el repo).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Un solo montaje a la vez: en instancias pequeñas, en paralelo se ahoga.
+      - key: RENDER_CONCURRENCY
+        value: "1"
+      - key: JOB_CONCURRENCY
+        value: "1"

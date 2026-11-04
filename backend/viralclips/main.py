@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import re
+import secrets
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
@@ -14,7 +15,7 @@ from fastapi import (
     BackgroundTasks, Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, events, worker
@@ -65,6 +66,36 @@ app.add_middleware(
 )
 
 URL_RE = re.compile(r"^https?://", re.I)
+
+# Rutas accesibles sin contraseña: sólo las que necesita la pantalla de acceso.
+PUBLIC_PATHS = {"/api/health", "/api/auth/status"}
+
+
+@app.middleware("http")
+async def require_access(request: Request, call_next):
+    """Protege la API cuando ACCESS_PASSWORD está configurada."""
+    path = request.url.path
+    if (
+        settings.access_password
+        and path.startswith("/api")
+        and path not in PUBLIC_PATHS
+        and request.method != "OPTIONS"
+    ):
+        # Las etiquetas <video>, <img> y EventSource no pueden mandar cabeceras,
+        # por eso también se acepta el token como parámetro de consulta.
+        token = (
+            request.headers.get("x-access-token")
+            or request.query_params.get("access_token")
+            or ""
+        )
+        if not secrets.compare_digest(token, settings.access_password):
+            return JSONResponse({"detail": "Contraseña incorrecta o ausente."}, status_code=401)
+    return await call_next(request)
+
+
+@app.get("/api/auth/status")
+async def auth_status() -> dict:
+    return {"required": bool(settings.access_password)}
 
 
 # --------------------------------------------------------------------------
