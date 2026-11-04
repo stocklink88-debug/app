@@ -2,6 +2,22 @@
 
 export type Layout = 'fill' | 'blur' | 'split'
 export type CaptionStyle = 'none' | 'pop' | 'karaoke' | 'boxed' | 'minimal'
+export type AudioMode = 'original' | 'mute' | 'voiceover'
+
+export interface Voice {
+  voice_id: string
+  name: string
+  category: string | null
+  description: string | null
+  preview_url: string | null
+  labels: Record<string, string>
+}
+
+export interface VoicePreview {
+  generated_voice_id: string
+  audio_data_url: string
+  duration_secs: number
+}
 
 export interface ProjectOptions {
   clip_count: number
@@ -15,6 +31,9 @@ export interface ProjectOptions {
   keywords: string | null
   normalize_audio: boolean
   resolution: number
+  audio_mode: AudioMode
+  voice_id: string | null
+  background_volume: number
 }
 
 export interface Clip {
@@ -37,6 +56,9 @@ export interface Clip {
   layout: Layout
   caption_style: CaptionStyle
   aspect: string
+  audio_mode: AudioMode
+  voice_id: string | null
+  voiceover_text: string
   status: 'pending' | 'rendering' | 'ready' | 'failed'
   error: string | null
   video_url: string | null
@@ -75,7 +97,9 @@ export interface Capabilities {
     faster_whisper: boolean
   }
   llm: { enabled: boolean; model: string | null }
+  voice: { enabled: boolean; model: string | null; default_voice_id: string | null }
   face_tracking: boolean
+  audio_modes?: AudioMode[]
   defaults: ProjectOptions
   cost_per_hour_usd: number
   layouts: Layout[]
@@ -175,7 +199,29 @@ export const api = {
     return request<Project>('/api/projects', { method: 'POST', body: form })
   },
 
-  updateClip: (id: string, data: Partial<Pick<Clip, 'title' | 'caption' | 'hashtags'>>) =>
+  listVoices: () =>
+    request<{ enabled: boolean; voices: Voice[]; default_voice_id?: string | null }>(
+      '/api/voices',
+    ),
+
+  designVoice: (description: string, sampleText?: string) =>
+    request<{ previews: VoicePreview[] }>('/api/voices/design', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description, sample_text: sampleText || null }),
+    }),
+
+  saveVoice: (data: { name: string; description: string; generated_voice_id: string }) =>
+    request<Voice>('/api/voices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  updateClip: (
+    id: string,
+    data: Partial<Pick<Clip, 'title' | 'caption' | 'hashtags' | 'voiceover_text'>>,
+  ) =>
     request<Clip>(`/api/clips/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -184,7 +230,17 @@ export const api = {
 
   rerenderClip: (
     id: string,
-    data: { layout?: Layout; caption_style?: CaptionStyle; aspect?: string; start?: number; end?: number },
+    data: {
+      layout?: Layout
+      caption_style?: CaptionStyle
+      aspect?: string
+      start?: number
+      end?: number
+      audio_mode?: AudioMode
+      voice_id?: string | null
+      voiceover_text?: string
+      background_volume?: number
+    },
   ) =>
     request<Clip>(`/api/clips/${id}/rerender`, {
       method: 'POST',

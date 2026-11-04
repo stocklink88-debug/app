@@ -35,6 +35,12 @@ class Layout(str, Enum):
     SPLIT = "split"    # arriba sujeto, abajo plano general
 
 
+class AudioMode(str, Enum):
+    ORIGINAL = "original"    # se conserva el audio del vídeo
+    MUTE = "mute"            # pista de audio en silencio
+    VOICEOVER = "voiceover"  # locución generada con IA
+
+
 class CaptionStyle(str, Enum):
     NONE = "none"
     POP = "pop"          # palabra activa en amarillo, estilo OpusClip
@@ -116,6 +122,12 @@ class ProjectOptions(BaseModel):
     normalize_audio: bool = True
     resolution: int = Field(default=1080, ge=480, le=1920)
 
+    # Audio
+    audio_mode: AudioMode = AudioMode.ORIGINAL
+    voice_id: str | None = None          # voz de ElevenLabs para la locución
+    # 0 = la locución sustituye al audio; >0 deja el original de fondo.
+    background_volume: float = Field(default=0.0, ge=0.0, le=1.0)
+
 
 class CreateProjectRequest(BaseModel):
     url: str | None = None
@@ -129,6 +141,7 @@ class ClipUpdate(BaseModel):
     hashtags: list[str] | None = None
     start: float | None = None
     end: float | None = None
+    voiceover_text: str | None = None
 
 
 class RerenderRequest(BaseModel):
@@ -137,6 +150,21 @@ class RerenderRequest(BaseModel):
     aspect: str | None = None
     start: float | None = None
     end: float | None = None
+    audio_mode: AudioMode | None = None
+    voice_id: str | None = None
+    voiceover_text: str | None = None
+    background_volume: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class DesignVoiceRequest(BaseModel):
+    description: str = Field(min_length=20, max_length=1000)
+    sample_text: str | None = None
+
+
+class SaveVoiceRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(min_length=1, max_length=1000)
+    generated_voice_id: str = Field(min_length=1)
 
 
 class ClipOut(BaseModel):
@@ -159,6 +187,9 @@ class ClipOut(BaseModel):
     layout: str
     caption_style: str
     aspect: str
+    audio_mode: str
+    voice_id: str | None
+    voiceover_text: str
     status: str
     error: str | None
     video_url: str | None

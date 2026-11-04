@@ -185,6 +185,9 @@ export default function App() {
               <span className="chip">
                 Caras: {capabilities.face_tracking ? 'sí' : 'no'}
               </span>
+              <span className="chip">
+                Voz IA: {capabilities.voice?.enabled ? 'sí' : 'no'}
+              </span>
             </div>
           )}
         </div>

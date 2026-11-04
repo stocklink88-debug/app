@@ -143,3 +143,106 @@ def test_tracking_produces_a_moving_crop(sample_video, tmp_path):
     assert len(xs) >= 2
     assert max(xs) - min(xs) > 40          # la cámara ha seguido al sujeto
     assert all(0 <= x <= 1920 - 608 for x in xs)
+
+
+# --------------------------------------------------------------------------
+# Modos de audio
+# --------------------------------------------------------------------------
+
+def _mean_volume_db(path: Path, *, start: float = 0.0, duration: float | None = None) -> float:
+    """Volumen medio medido con ffmpeg; -91 dB equivale a silencio digital."""
+    args = ["ffmpeg", "-hide_banner", "-ss", str(start)]
+    if duration is not None:
+        args += ["-t", str(duration)]
+    args += ["-i", str(path), "-af", "volumedetect", "-f", "null", "-"]
+    out = subprocess.run(args, capture_output=True, text=True).stderr
+    for line in out.splitlines():
+        if "mean_volume:" in line:
+            return float(line.split("mean_volume:")[1].strip().split()[0])
+    raise AssertionError(f"ffmpeg no reportó volumen para {path}")
+
+
+def _dominant_hz(path: Path, *, at: float) -> float:
+    """Frecuencia dominante en un instante, para saber qué audio suena."""
+    import wave
+
+    import numpy as np
+
+    wav = path.with_suffix(".probe.wav")
+    subprocess.run(
+        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", str(at),
+         "-t", "0.5", "-i", str(path), "-ac", "1", "-ar", "8000", str(wav)],
+        check=True, capture_output=True,
+    )
+    with wave.open(str(wav)) as handle:
+        data = np.frombuffer(handle.readframes(handle.getnframes()), dtype=np.int16)
+        rate = handle.getframerate()
+    samples = data.astype(float) * np.hanning(len(data))
+    spectrum = np.abs(np.fft.rfft(samples))
+    return float(np.fft.rfftfreq(len(samples), 1 / rate)[spectrum.argmax()])
+
+
+@pytest.fixture(scope="module")
+def fake_voiceover(tmp_path_factory) -> Path:
+    """Locución simulada: 6 s de tono a 700 Hz, distinto del audio del vídeo."""
+    out = tmp_path_factory.mktemp("voice") / "voz.mp3"
+    subprocess.run(
+        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "sine=frequency=700:duration=6:sample_rate=44100",
+         "-c:a", "libmp3lame", "-b:a", "128k", str(out)],
+        check=True, capture_output=True,
+    )
+    return out
+
+
+def test_mute_produces_a_silent_audio_track(sample_video, words, tmp_path):
+    """Silenciado: pista presente (las plataformas la exigen) pero sin sonido."""
+    from viralclips.models import AudioMode
+
+    req = _request(sample_video, words, tmp_path, audio_mode=AudioMode.MUTE,
+                   normalize_audio=False, end=10.0,
+                   out_video=tmp_path / "mute.mp4", out_thumb=tmp_path / "mute.jpg")
+    result = render_clip(req)
+
+    info = probe(result.video)
+    assert info.has_audio, "debe quedar pista de audio, aunque esté en silencio"
+    assert info.duration == pytest.approx(8.0, abs=0.4)
+    assert _mean_volume_db(result.video) < -80
+
+
+def test_original_audio_is_kept_by_default(sample_video, words, tmp_path):
+    req = _request(sample_video, words, tmp_path, normalize_audio=False, end=10.0,
+                   out_video=tmp_path / "orig.mp4", out_thumb=tmp_path / "orig.jpg")
+    result = render_clip(req)
+    assert _mean_volume_db(result.video) > -60
+    assert _dominant_hz(result.video, at=2.0) == pytest.approx(220, abs=25)
+
+
+def test_voiceover_replaces_the_original_audio(sample_video, words, tmp_path, fake_voiceover):
+    """La locución debe sonar en lugar del audio original, no encima."""
+    from viralclips.models import AudioMode
+
+    req = _request(sample_video, words, tmp_path, audio_mode=AudioMode.VOICEOVER,
+                   voiceover_path=fake_voiceover, normalize_audio=False, end=10.0,
+                   out_video=tmp_path / "voz.mp4", out_thumb=tmp_path / "voz.jpg")
+    result = render_clip(req)
+
+    assert probe(result.video).duration == pytest.approx(8.0, abs=0.4)
+    # A los 2 s suena la locución (700 Hz), no el vídeo original (220 Hz).
+    assert _dominant_hz(result.video, at=2.0) == pytest.approx(700, abs=40)
+    # La locución dura 6 s y el clip 8: el resto se rellena con silencio.
+    assert _mean_volume_db(result.video, start=6.5) < -80
+
+
+def test_voiceover_can_keep_the_original_underneath(sample_video, words, tmp_path,
+                                                    fake_voiceover):
+    from viralclips.models import AudioMode
+
+    req = _request(sample_video, words, tmp_path, audio_mode=AudioMode.VOICEOVER,
+                   voiceover_path=fake_voiceover, background_volume=0.25,
+                   normalize_audio=False, end=10.0,
+                   out_video=tmp_path / "mix.mp4", out_thumb=tmp_path / "mix.jpg")
+    result = render_clip(req)
+
+    # Donde la locución ya calló, el audio original sigue sonando de fondo.
+    assert _mean_volume_db(result.video, start=6.5) > -80

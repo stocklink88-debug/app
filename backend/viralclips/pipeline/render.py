@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from ..models import CaptionStyle, Layout, Word
+from ..models import AudioMode, CaptionStyle, Layout, Word
 from .ffmpeg import escape_filter_path, extract_thumbnail, run_ffmpeg
 from .subtitles import build_ass
 from .tracking import Track, build_crop_expression, compute_track, parse_aspect
@@ -37,6 +37,11 @@ class RenderRequest:
     normalize_audio: bool
     model_path: Path
     font: str | None = None
+    audio_mode: AudioMode = AudioMode.ORIGINAL
+    # Locución ya generada (ElevenLabs) para audio_mode == VOICEOVER.
+    voiceover_path: Path | None = None
+    # Volumen del audio original bajo la locución: 0 lo elimina del todo.
+    background_volume: float = 0.0
 
     @property
     def duration(self) -> float:
@@ -103,6 +108,10 @@ def render_clip(req: RenderRequest, *, on_progress: ProgressFn | None = None) ->
     args = [
         "-ss", f"{req.start:.3f}",
         "-i", str(req.source),
+    ]
+    if req.audio_mode == AudioMode.VOICEOVER and req.voiceover_path:
+        args += ["-i", str(req.voiceover_path)]
+    args += [
         "-t", f"{req.duration:.3f}",
         "-filter_complex", filtergraph,
         "-map", "[vout]", "-map", "[aout]",
@@ -149,13 +158,36 @@ def _build_filtergraph(
         video += f",{ass}"
     video += ",format=yuv420p[vout]"
 
-    audio = "[0:a]asetpts=PTS-STARTPTS"
-    if req.normalize_audio:
-        # Objetivo de las plataformas de vídeo vertical: ~-14 LUFS.
-        audio += ",loudnorm=I=-14:TP=-1.5:LRA=11"
-    audio += ",aresample=48000[aout]"
+    return f"{video};{_audio_graph(req)}"
 
-    return f"{video};{audio}"
+
+def _audio_graph(req: RenderRequest) -> str:
+    """Cadena de audio según el modo elegido."""
+    normalize = ",loudnorm=I=-14:TP=-1.5:LRA=11" if req.normalize_audio else ""
+
+    if req.audio_mode == AudioMode.MUTE:
+        # Pista silenciosa en lugar de ninguna: algunas plataformas rechazan
+        # los vídeos sin stream de audio. `-t` la recorta a la duración del clip.
+        return "anullsrc=channel_layout=stereo:sample_rate=48000[aout]"
+
+    if req.audio_mode == AudioMode.VOICEOVER and req.voiceover_path:
+        # La locución nunca dura exactamente lo que el clip: se rellena con
+        # silencio si falta y se recorta si sobra.
+        voice = (
+            f"[1:a]aresample=48000,asetpts=PTS-STARTPTS,"
+            f"apad,atrim=duration={req.duration:.3f}"
+        )
+        if req.background_volume > 0:
+            return (
+                f"{voice}[voice];"
+                f"[0:a]asetpts=PTS-STARTPTS,aresample=48000,"
+                f"volume={req.background_volume:.3f}[bgaudio];"
+                f"[bgaudio][voice]amix=inputs=2:duration=first:dropout_transition=0,"
+                f"aresample=48000{normalize}[aout]"
+            )
+        return f"{voice}{normalize}[aout]"
+
+    return f"[0:a]asetpts=PTS-STARTPTS{normalize},aresample=48000[aout]"
 
 
 def _fill_graph(track: Track, out_w: int, out_h: int) -> str:

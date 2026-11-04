@@ -15,12 +15,14 @@ propia máquina.
 3. **Busca los momentos con más potencial**: parte la transcripción en frases,
    genera ventanas candidatas y las puntúa. Claude elige las mejores y escribe
    títulos, ganchos y copys; si no hay clave de Claude, decide la heurística.
-4. **Reencuadra a vertical siguiendo al sujeto**: detecta caras con YuNet,
+4. **Ajusta el audio**: lo deja como está, lo silencia por completo, o lo
+   sustituye por una locución generada con IA (ElevenLabs).
+5. **Reencuadra a vertical siguiendo al sujeto**: detecta caras con YuNet,
    suaviza la trayectoria y hace un paneo limpio, cortando en seco en los
    cambios de plano en vez de barrer entre escenas.
-5. **Quema subtítulos animados** palabra a palabra, al estilo de los clips que
+6. **Quema subtítulos animados** palabra a palabra, al estilo de los clips que
    funcionan, y normaliza el volumen a −14 LUFS.
-6. **Entrega** cada clip en MP4 con su miniatura, su nota de viralidad, el texto
+7. **Entrega** cada clip en MP4 con su miniatura, su nota de viralidad, el texto
    para publicar, los hashtags y el `.srt` por si quieres retocarlo fuera.
 
 ## Puesta en marcha
@@ -167,7 +169,31 @@ Cuando hay clave, la nota final mezcla ambas: `LLM_WEIGHT` (0,65 por defecto)
 controla cuánto pesa Claude. La heurística aporta señales objetivas —sobre todo
 el audio— que el modelo no puede ver.
 
-### 3. Detección de caras
+### 3. Voces de IA y silenciado (ElevenLabs)
+
+Cada clip puede salir con el **audio original**, **silenciado** (pista muda,
+para vídeos que sólo se ven con subtítulos) o con una **locución de IA** que
+sustituye a la voz original.
+
+El silenciado no necesita ninguna clave. La locución sí: pon `ELEVENLABS_API_KEY`
+en el `.env`. Con ella puedes además:
+
+- Elegir cualquier voz de tu cuenta de ElevenLabs desde la interfaz.
+- **Crear una voz nueva describiéndola con texto** ("mujer joven española, tono
+  cercano y enérgico, habla rápido"). La app genera varias propuestas, las
+  escuchas y guardas la que prefieras, que queda disponible para los clips.
+- Editar el texto que se locuta: por defecto lee la transcripción del clip,
+  pero puedes escribir otro.
+- Dejar el audio original de fondo a bajo volumen en vez de eliminarlo.
+
+**Los subtítulos se resincronizan con la voz nueva.** ElevenLabs devuelve los
+tiempos de cada carácter junto al audio; la app los agrupa en palabras y los usa
+para los subtítulos, en lugar de arrastrar los tiempos del audio sustituido.
+
+Si la locución es más corta que el clip, se rellena con silencio; si es más
+larga, se recorta al final.
+
+### 4. Detección de caras
 
 `make models` descarga YuNet (230 KB). Sin él, el reencuadre cae a saliencia por
 movimiento, que funciona razonablemente pero no distingue quién habla.
@@ -180,6 +206,8 @@ movimiento, que funciona razonablemente pero no distingue quién habla.
 | **Duración** | mínimo y máximo, en segundos |
 | **Formato** | 9:16 · 4:5 · 1:1 · 16:9 |
 | **Encuadre** | seguir al sujeto · fondo desenfocado · dividido |
+| **Audio** | original · silenciado · locución de IA |
+| **Voz** | cualquiera de tu cuenta de ElevenLabs, o una creada por ti |
 | **Subtítulos** | palabra resaltada · karaoke · con caja · discreto · ninguno |
 | **Resolución** | 720p · 1080p · 1440p |
 | **Tema** | palabras clave que suben la nota de los clips que las contienen |
@@ -204,10 +232,11 @@ backend/
       scoring.py          heurística de viralidad
       analyze.py          selección con Claude + mezcla de notas
       metadata.py         títulos, copys y hashtags sin LLM
+      voice.py            ElevenLabs: locución, tiempos y diseño de voces
       tracking.py         detección de caras, suavizado y paneo
       subtitles.py        generación de ASS con resaltado por palabra
       render.py           montaje final con ffmpeg
-  tests/                  97 tests (13 renderizan vídeo real)
+  tests/                  131 tests (17 renderizan vídeo real)
 ```
 
 El backend es un único proceso: FastAPI sirve la API y el frontend compilado, y
@@ -234,6 +263,9 @@ suavizado, para que la cámara salte en seco en el corte en lugar de barrer.
 | Método | Ruta | Para qué |
 |---|---|---|
 | `GET` | `/api/auth/status` | si el servidor exige contraseña (público) |
+| `GET` | `/api/voices` | voces disponibles en ElevenLabs |
+| `POST` | `/api/voices/design` | propuestas de voz desde una descripción |
+| `POST` | `/api/voices` | guarda la voz elegida en tu cuenta |
 | `GET` | `/api/capabilities` | qué proveedores hay configurados |
 | `POST` | `/api/projects` | crear proyecto (`file` o `url`, `subtitles` opcional) |
 | `GET` | `/api/projects` | lista de proyectos |
@@ -261,13 +293,15 @@ curl -X POST http://localhost:8000/api/projects \
 ## Tests
 
 ```bash
-make test        # 84 tests, menos de un segundo
-make test-slow   # 13 tests que renderizan vídeo con ffmpeg (~30 s)
+make test        # 114 tests, menos de un segundo
+make test-slow   # 17 tests que renderizan vídeo con ffmpeg (~40 s)
 ```
 
 Los lentos generan un vídeo sintético y comprueban que salen MP4 verticales
 válidos con los tres encuadres, los cinco estilos de subtítulos y los cuatro
-formatos, y que el recorte realmente sigue al sujeto cuando éste se mueve.
+formatos; que el recorte sigue al sujeto cuando éste se mueve; y que el modo
+silencio deja la pista a −91 dB mientras la locución sustituye de verdad al
+audio original (se mide la frecuencia dominante para distinguirlos).
 
 ## Rendimiento
 
@@ -286,6 +320,9 @@ el montaje.
 
 ## Limitaciones conocidas
 
+- **La integración de ElevenLabs no se ha probado contra el servicio real.** El
+  cliente está escrito sobre la API documentada y cubierto con tests que simulan
+  sus respuestas, pero no se ha ejecutado con una clave de verdad.
 - **No separa hablantes.** En un plano con dos personas sigue a la cara más
   grande y cercana a la anterior; no cambia de encuadre según quién habla.
 - **No reescribe el montaje.** Corta un fragmento continuo: no elimina silencios

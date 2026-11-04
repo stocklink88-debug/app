@@ -20,16 +20,21 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 
 from . import db, events, worker
 from .config import get_settings
 from .models import (
-    STAGE_LABELS, CaptionStyle, ClipOut, ClipUpdate, CreateProjectRequest,
-    Layout, ProjectOptions, ProjectOut, RerenderRequest, Stage,
+    STAGE_LABELS, AudioMode, CaptionStyle, ClipOut, ClipUpdate,
+    CreateProjectRequest, DesignVoiceRequest, Layout, ProjectOptions,
+    ProjectOut, RerenderRequest, SaveVoiceRequest, Stage,
 )
 from .pipeline.ingest import safe_filename
 from .pipeline.transcribe import estimate_cost_usd
+from .pipeline.voice import (
+    VoiceError, design_voice, list_voices, save_designed_voice,
+)
 from .serving import file_response
 
 logging.basicConfig(
@@ -197,6 +202,9 @@ def _clip_out(row) -> ClipOut:
         layout=row["layout"],
         caption_style=row["caption_style"],
         aspect=row["aspect"],
+        audio_mode=row["audio_mode"],
+        voice_id=row["voice_id"],
+        voiceover_text=row["voiceover_text"] or "",
         status=row["status"],
         error=row["error"],
         video_url=f"/api/clips/{row['id']}/video" if row["video_path"] else None,
@@ -251,7 +259,55 @@ async def capabilities() -> dict:
     caps["layouts"] = [l.value for l in Layout]
     caps["caption_styles"] = [c.value for c in CaptionStyle]
     caps["max_upload_mb"] = settings.max_upload_mb
+    caps["audio_modes"] = [m.value for m in AudioMode]
     return caps
+
+
+# --------------------------------------------------------------------------
+# Voces de IA (ElevenLabs)
+# --------------------------------------------------------------------------
+
+@app.get("/api/voices")
+async def get_voices() -> dict:
+    """Voces disponibles en la cuenta de ElevenLabs."""
+    if not settings.elevenlabs_api_key:
+        return {"enabled": False, "voices": []}
+    try:
+        voices = await run_in_threadpool(list_voices, settings)
+    except VoiceError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {
+        "enabled": True,
+        "voices": [v.to_dict() for v in voices],
+        "default_voice_id": settings.elevenlabs_voice_id,
+    }
+
+
+@app.post("/api/voices/design")
+async def post_design_voice(payload: DesignVoiceRequest) -> dict:
+    """Previsualizaciones de una voz nueva creada desde una descripción."""
+    try:
+        previews = await run_in_threadpool(
+            design_voice, payload.description,
+            settings=settings, sample_text=payload.sample_text,
+        )
+    except VoiceError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"previews": [p.to_dict() for p in previews]}
+
+
+@app.post("/api/voices")
+async def post_save_voice(payload: SaveVoiceRequest) -> dict:
+    """Guarda en la cuenta la previsualización elegida."""
+    try:
+        voice = await run_in_threadpool(
+            save_designed_voice,
+            name=payload.name, description=payload.description,
+            generated_voice_id=payload.generated_voice_id, settings=settings,
+        )
+    except VoiceError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return voice.to_dict()
 
 
 # --------------------------------------------------------------------------
@@ -488,6 +544,8 @@ async def update_clip(clip_id: str, payload: ClipUpdate) -> ClipOut:
         fields["start"] = max(0.0, payload.start)
     if payload.end is not None:
         fields["end"] = payload.end
+    if payload.voiceover_text is not None:
+        fields["voiceover_text"] = payload.voiceover_text[:5000]
     if "start" in fields or "end" in fields:
         start = fields.get("start", row["start"])
         end = fields.get("end", row["end"])
@@ -519,14 +577,37 @@ async def rerender(clip_id: str, payload: RerenderRequest, tasks: BackgroundTask
         fields["start"] = max(0.0, payload.start)
     if payload.end is not None:
         fields["end"] = payload.end
+    if payload.audio_mode:
+        fields["audio_mode"] = payload.audio_mode.value
+    if payload.voice_id is not None:
+        fields["voice_id"] = payload.voice_id or None
+    if payload.voiceover_text is not None:
+        fields["voiceover_text"] = payload.voiceover_text[:5000]
 
     start = fields.get("start", row["start"])
     end = fields.get("end", row["end"])
     if end - start < 2.0:
         raise HTTPException(400, "El clip debe durar al menos 2 segundos.")
 
+    target_mode = fields.get("audio_mode", row["audio_mode"])
+    if target_mode == AudioMode.VOICEOVER.value:
+        if not settings.elevenlabs_api_key:
+            raise HTTPException(
+                400, "Falta ELEVENLABS_API_KEY: no se puede generar la locución."
+            )
+        if not (fields.get("voice_id", row["voice_id"]) or settings.elevenlabs_voice_id):
+            raise HTTPException(400, "Elige una voz para la locución.")
+
     fields["status"] = "rendering"
     db.update_clip(clip_id, **fields)
+
+    if payload.background_volume is not None:
+        project = db.get_project(row["project_id"])
+        if project is not None:
+            opts = json.loads(project["options"] or "{}")
+            opts["background_volume"] = payload.background_volume
+            db.update_project(project["id"], options=opts)
+
     tasks.add_task(_safe_rerender, clip_id)
     return _clip_out(db.get_clip(clip_id))
 

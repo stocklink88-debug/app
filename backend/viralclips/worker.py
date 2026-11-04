@@ -10,14 +10,15 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import db, events
-from .config import get_settings
-from .models import CaptionStyle, Layout, Stage, STAGE_LABELS, Transcript
+from .config import Settings, get_settings
+from .models import AudioMode, CaptionStyle, Layout, Stage, STAGE_LABELS, Transcript, Word
 from .pipeline.analyze import analyse
 from .pipeline.ingest import download_url, prepare
 from .pipeline.lexicon import detect_language
 from .pipeline.render import RenderRequest, render_clip
 from .pipeline.scoring import AudioProfile
 from .pipeline.transcribe import parse_subtitles, read_wav_rms, transcribe
+from .pipeline.voice import VoiceError, synthesize
 
 log = logging.getLogger(__name__)
 
@@ -216,6 +217,8 @@ def run_project(project_id: str) -> None:
         layout = options.get("layout", Layout.FILL.value)
         caption_style = options.get("caption_style", CaptionStyle.POP.value)
         aspect = options.get("aspect", "9:16")
+        audio_mode = options.get("audio_mode", AudioMode.ORIGINAL.value)
+        voice_id = options.get("voice_id") or settings.elevenlabs_voice_id
 
         clip_ids: list[str] = []
         for i, p in enumerate(proposals):
@@ -240,6 +243,8 @@ def run_project(project_id: str) -> None:
                 "layout": layout,
                 "caption_style": caption_style,
                 "aspect": aspect,
+                "audio_mode": audio_mode,
+                "voice_id": voice_id,
                 "status": "pending",
             }))
 
@@ -323,29 +328,90 @@ def _render_single(
     out_dir = work_dir / "clips"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    start, end = float(row["start"]), float(row["end"])
+    audio_mode = AudioMode(row["audio_mode"] or AudioMode.ORIGINAL.value)
+    words = transcript.words if transcript.has_text else []
+    voiceover_path: Path | None = None
+
+    if audio_mode == AudioMode.VOICEOVER:
+        voiceover_path, voice_words = _make_voiceover(
+            row=row, transcript=transcript, start=start, end=end,
+            work_dir=work_dir, settings=settings,
+        )
+        # Los subtítulos deben seguir a la voz nueva, no al audio sustituido.
+        if voice_words:
+            words = voice_words
+
     req = RenderRequest(
         source=source,
         out_video=out_dir / f"{clip_id}.mp4",
         out_thumb=out_dir / f"{clip_id}.jpg",
         work_dir=work_dir / "tmp",
-        start=float(row["start"]),
-        end=float(row["end"]),
+        start=start,
+        end=end,
         source_w=info_w,
         source_h=info_h,
         layout=Layout(row["layout"]),
         caption_style=CaptionStyle(row["caption_style"]),
         aspect=row["aspect"],
-        words=transcript.words if transcript.has_text else [],
+        words=words,
         hook=row["hook"] or None,
         resolution=int(options.get("resolution", 1080)),
         normalize_audio=bool(options.get("normalize_audio", True)),
         model_path=settings.yunet_path,
         font=settings.subtitle_font,
+        audio_mode=audio_mode,
+        voiceover_path=voiceover_path,
+        background_volume=float(options.get("background_volume", 0.0)),
     )
     result = render_clip(req)
     db.update_clip(
         clip_id, video_path=str(result.video), thumb_path=str(result.thumb)
     )
+
+
+def _make_voiceover(
+    *,
+    row,
+    transcript: Transcript,
+    start: float,
+    end: float,
+    work_dir: Path,
+    settings: Settings,
+) -> tuple[Path | None, list]:
+    """Genera la locución del clip con ElevenLabs.
+
+    Los tiempos vuelven referidos al inicio del clip (0), que es como los
+    espera el generador de subtítulos.
+    """
+    text = (row["voiceover_text"] or "").strip()
+    if not text:
+        text = transcript.text_between(start, end).strip()
+    if not text:
+        raise VoiceError(
+            "No hay texto para la locución: escribe uno en el clip o usa una "
+            "transcripción con texto."
+        )
+
+    voice_id = row["voice_id"] or settings.elevenlabs_voice_id
+    if not voice_id:
+        raise VoiceError("Elige una voz antes de generar la locución.")
+
+    voice_dir = work_dir / "voice"
+    speech = synthesize(
+        text,
+        voice_id=voice_id,
+        settings=settings,
+        out_path=voice_dir / f"{row['id']}.mp3",
+        language=transcript.language,
+    )
+    db.update_clip(row["id"], voiceover_path=str(speech.path))
+
+    # La locución empieza en 0, pero build_ass resta clip_start: lo compensamos.
+    shifted = [
+        Word(w.text, w.start + start, w.end + start) for w in speech.words
+    ]
+    return speech.path, shifted
 
 
 def rerender_clip(clip_id: str) -> None:

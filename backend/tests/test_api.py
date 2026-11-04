@@ -224,3 +224,88 @@ def test_listen_port_falls_back_to_default(monkeypatch):
     monkeypatch.delenv("PORT", raising=False)
     monkeypatch.setattr(main.sys, "argv", ["uvicorn", "app"])
     assert main._listen_port() == 8000
+
+
+# --------------------------------------------------------------------------
+# Voces de IA y modos de audio
+# --------------------------------------------------------------------------
+
+def test_voices_endpoint_without_key(client):
+    """Sin clave no falla: la interfaz necesita saber que no está disponible."""
+    body = client.get("/api/voices").json()
+    assert body == {"enabled": False, "voices": []}
+
+
+def test_capabilities_reports_voice_support(client):
+    caps = client.get("/api/capabilities").json()
+    assert "voice" in caps and caps["voice"]["enabled"] is False
+    assert caps["audio_modes"] == ["original", "mute", "voiceover"]
+
+
+def test_design_voice_requires_long_description(client):
+    r = client.post("/api/voices/design", json={"description": "corta"})
+    assert r.status_code == 422          # lo rechaza el esquema antes de llamar
+
+
+def test_rerender_to_voiceover_without_key_is_rejected(client):
+    from viralclips import db
+
+    pid = db.create_project(title="T", source_type="upload")
+    cid = db.create_clip(pid, {"idx": 0, "start": 0.0, "end": 30.0})
+    r = client.post(f"/api/clips/{cid}/rerender", json={"audio_mode": "voiceover"})
+    assert r.status_code == 400
+    assert "ELEVENLABS_API_KEY" in r.json()["detail"]
+    db.delete_project(pid)
+
+
+def test_rerender_to_mute_is_allowed_without_any_key(client):
+    from viralclips import db
+
+    pid = db.create_project(title="T", source_type="upload")
+    cid = db.create_clip(pid, {"idx": 0, "start": 0.0, "end": 30.0})
+    r = client.post(f"/api/clips/{cid}/rerender", json={"audio_mode": "mute"})
+    assert r.status_code == 200
+    assert r.json()["audio_mode"] == "mute"
+    db.delete_project(pid)
+
+
+def test_rerender_voiceover_needs_a_voice(client, monkeypatch):
+    from viralclips import db, main
+
+    monkeypatch.setattr(main.settings, "elevenlabs_api_key", "clave")
+    monkeypatch.setattr(main.settings, "elevenlabs_voice_id", None)
+    pid = db.create_project(title="T", source_type="upload")
+    cid = db.create_clip(pid, {"idx": 0, "start": 0.0, "end": 30.0})
+    r = client.post(f"/api/clips/{cid}/rerender", json={"audio_mode": "voiceover"})
+    assert r.status_code == 400
+    assert "voz" in r.json()["detail"].lower()
+    db.delete_project(pid)
+
+
+def test_clip_patch_stores_voiceover_text(client):
+    from viralclips import db
+
+    pid = db.create_project(title="T", source_type="upload")
+    cid = db.create_clip(pid, {"idx": 0, "start": 0.0, "end": 30.0})
+    r = client.patch(f"/api/clips/{cid}", json={"voiceover_text": "Texto a locutar"})
+    assert r.status_code == 200
+    assert r.json()["voiceover_text"] == "Texto a locutar"
+    db.delete_project(pid)
+
+
+def test_project_options_accept_audio_settings(client):
+    r = client.post("/api/projects", data={
+        "url": "https://example.com/v",
+        "options": json.dumps({"audio_mode": "mute", "background_volume": 0.3}),
+    })
+    assert r.status_code == 200
+    assert r.json()["options"]["audio_mode"] == "mute"
+    client.delete(f"/api/projects/{r.json()['id']}")
+
+
+def test_project_options_reject_bad_background_volume(client):
+    r = client.post("/api/projects", data={
+        "url": "https://example.com/v",
+        "options": json.dumps({"background_volume": 5}),
+    })
+    assert r.status_code == 400

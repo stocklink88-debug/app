@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CaptionStyle, Clip, Layout } from '../lib/api'
+import type { AudioMode, CaptionStyle, Clip, Layout } from '../lib/api'
 import { api, formatTimestamp, withToken } from '../lib/api'
 import { IconCheck, IconCopy, IconDownload, IconRefresh, IconX } from './Icons'
 import ScoreRing from './ScoreRing'
+import VoicePicker from './VoicePicker'
 
 interface Props {
   clip: Clip
@@ -24,6 +25,12 @@ const STYLES: { value: CaptionStyle; label: string }[] = [
   { value: 'none', label: 'Sin subtítulos' },
 ]
 
+const AUDIO_MODES: { value: AudioMode; label: string }[] = [
+  { value: 'original', label: 'Audio original' },
+  { value: 'mute', label: 'Silenciar' },
+  { value: 'voiceover', label: 'Voz de IA' },
+]
+
 const BREAKDOWN_LABELS: Record<string, string> = {
   hook: 'Gancho',
   emotion: 'Emoción',
@@ -37,6 +44,7 @@ export default function ClipDetail({ clip, onClose, onChanged }: Props) {
   const [current, setCurrent] = useState(clip)
   const [caption, setCaption] = useState(clip.caption)
   const [title, setTitle] = useState(clip.title)
+  const [voiceoverText, setVoiceoverText] = useState(clip.voiceover_text)
   const [copied, setCopied] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +52,7 @@ export default function ClipDetail({ clip, onClose, onChanged }: Props) {
 
   useEffect(() => {
     setCurrent(clip); setCaption(clip.caption); setTitle(clip.title)
+    setVoiceoverText(clip.voiceover_text)
   }, [clip])
 
   // Mientras se remonta el clip, consultamos su estado periódicamente.
@@ -82,7 +91,9 @@ export default function ClipDetail({ clip, onClose, onChanged }: Props) {
   async function save() {
     setSaving(true); setError(null)
     try {
-      const updated = await api.updateClip(current.id, { title, caption })
+      const updated = await api.updateClip(current.id, {
+        title, caption, voiceover_text: voiceoverText,
+      })
       setCurrent(updated); onChanged(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar.')
@@ -91,7 +102,13 @@ export default function ClipDetail({ clip, onClose, onChanged }: Props) {
     }
   }
 
-  async function rerender(patch: { layout?: Layout; caption_style?: CaptionStyle }) {
+  async function rerender(patch: {
+    layout?: Layout
+    caption_style?: CaptionStyle
+    audio_mode?: AudioMode
+    voice_id?: string | null
+    voiceover_text?: string
+  }) {
     setError(null)
     try {
       const updated = await api.rerenderClip(current.id, patch)
@@ -252,6 +269,51 @@ export default function ClipDetail({ clip, onClose, onChanged }: Props) {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="label">Audio</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {AUDIO_MODES.map((m) => (
+                    <button
+                      key={m.value} disabled={current.status === 'rendering'}
+                      onClick={() => rerender({ audio_mode: m.value })}
+                      className={`btn btn-sm ${current.audio_mode === m.value
+                        ? 'bg-accent text-ink-900'
+                        : 'bg-white/[0.06] text-slate-300 hover:bg-white/[0.1]'}`}
+                    >{m.label}</button>
+                  ))}
+                </div>
+
+                {current.audio_mode === 'voiceover' && (
+                  <div className="mt-3 space-y-3 rise">
+                    <VoicePicker
+                      value={current.voice_id}
+                      disabled={current.status === 'rendering'}
+                      onChange={(voiceId) => {
+                        if (voiceId && voiceId !== current.voice_id) {
+                          rerender({ voice_id: voiceId })
+                        }
+                      }}
+                    />
+                    <div>
+                      <label className="label">Texto que se locuta</label>
+                      <textarea
+                        className="field min-h-[70px] resize-y"
+                        placeholder="Vacío = se lee la transcripción del clip"
+                        value={voiceoverText}
+                        onChange={(e) => setVoiceoverText(e.target.value)}
+                      />
+                      <button
+                        disabled={current.status === 'rendering'}
+                        onClick={() => rerender({ voiceover_text: voiceoverText })}
+                        className="btn-ghost btn-sm mt-2"
+                      >
+                        Regenerar locución
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {current.transcript && (

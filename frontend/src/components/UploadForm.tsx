@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import type { Capabilities, CaptionStyle, Layout, ProjectOptions } from '../lib/api'
+import type { AudioMode, Capabilities, CaptionStyle, Layout, ProjectOptions } from '../lib/api'
+import VoicePicker from './VoicePicker'
 import { IconFilm, IconLink, IconSparkles, IconUpload, IconX } from './Icons'
 
 interface Props {
@@ -22,6 +23,12 @@ const CAPTION_INFO: Record<CaptionStyle, string> = {
   none: 'Sin subtítulos',
 }
 
+const AUDIO_INFO: Record<AudioMode, { name: string; desc: string }> = {
+  original: { name: 'Audio original', desc: 'Se conserva el sonido del vídeo' },
+  mute: { name: 'Silenciar', desc: 'Clips mudos, sólo imagen y subtítulos' },
+  voiceover: { name: 'Voz de IA', desc: 'Sustituye la voz por una locución generada' },
+}
+
 const DEFAULTS: ProjectOptions = {
   clip_count: 8,
   min_duration: 15,
@@ -34,6 +41,9 @@ const DEFAULTS: ProjectOptions = {
   keywords: null,
   normalize_audio: true,
   resolution: 1080,
+  audio_mode: 'original',
+  voice_id: null,
+  background_volume: 0,
 }
 
 export default function UploadForm({ capabilities, busy, onSubmit }: Props) {
@@ -232,6 +242,56 @@ export default function UploadForm({ capabilities, busy, onSubmit }: Props) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Audio */}
+      <div className="mt-5">
+        <label className="label">Audio</label>
+        <div className="grid sm:grid-cols-3 gap-2">
+          {(Object.keys(AUDIO_INFO) as AudioMode[]).map((m) => {
+            const blocked = m === 'voiceover' && capabilities?.voice.enabled === false
+            return (
+              <button
+                key={m} type="button" disabled={blocked}
+                onClick={() => set('audio_mode', m)}
+                title={blocked ? 'Requiere ELEVENLABS_API_KEY en el servidor' : undefined}
+                className={`text-left rounded-xl border p-3 transition disabled:opacity-40
+                  ${opts.audio_mode === m
+                    ? 'border-accent/60 bg-accent/[0.08]'
+                    : 'border-white/10 hover:border-white/25 bg-white/[0.02]'}`}
+              >
+                <p className="text-sm font-semibold">{AUDIO_INFO[m].name}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                  {AUDIO_INFO[m].desc}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+
+        {opts.audio_mode === 'voiceover' && (
+          <div className="mt-3 space-y-3 rise">
+            <VoicePicker value={opts.voice_id} onChange={(v) => set('voice_id', v)} />
+            <div>
+              <label className="label">
+                Audio original de fondo: {Math.round(opts.background_volume * 100)}%
+              </label>
+              <input
+                type="range" min={0} max={60} step={5}
+                value={Math.round(opts.background_volume * 100)}
+                onChange={(e) => set('background_volume', Number(e.target.value) / 100)}
+                className="w-full accent-accent"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                En 0% la locución sustituye al sonido original por completo.
+              </p>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              La locución lee la transcripción de cada clip. Los subtítulos se
+              resincronizan con la voz nueva, no con el audio sustituido.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Subtítulos */}

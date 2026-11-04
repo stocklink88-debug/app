@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     faster_whisper_model: str = "base"
     faster_whisper_compute_type: str = "int8"
 
+    # --- Locución con voces de IA (ElevenLabs) ---
+    elevenlabs_api_key: str | None = None
+    # multilingual_v2 rinde bien en español; flash_v2_5 es más rápido y barato.
+    elevenlabs_model: str = "eleven_multilingual_v2"
+    elevenlabs_design_model: str = "eleven_multilingual_ttv_v2"
+    elevenlabs_voice_id: str | None = None
+
     # --- Análisis con LLM ---
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-5-5"
@@ -114,6 +121,11 @@ class Settings(BaseSettings):
             "face_tracking": self.yunet_path.exists(),
             "subtitle_font": self.subtitle_font,
             "auth_required": bool(self.access_password),
+            "voice": {
+                "enabled": bool(self.elevenlabs_api_key),
+                "model": self.elevenlabs_model if self.elevenlabs_api_key else None,
+                "default_voice_id": self.elevenlabs_voice_id,
+            },
         }
 
 
