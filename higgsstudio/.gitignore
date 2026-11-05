@@ -1,0 +1,9 @@
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+data/
+backend/higgsstudio/static/
+.env
+.pytest_cache/
+.DS_Store

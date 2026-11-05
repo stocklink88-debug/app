@@ -7,6 +7,13 @@ propia máquina.
 
 ![pipeline](https://img.shields.io/badge/pipeline-transcribir%20→%20analizar%20→%20recortar%20→%20subtitular-FFD24A)
 
+> **En este repositorio hay dos apps.** Esta es ViralClips. En
+> [`higgsstudio/`](higgsstudio/) está **HiggsStudio**, un estudio de generación
+> de vídeo e imagen con IA (presets de cámara, Soul ID, avatares que hablan,
+> estudio de anuncios y posproducción), con su propio README y su propio
+> despliegue.
+
+
 ## Qué hace exactamente
 
 1. **Ingesta** el vídeo desde un archivo o desde una URL (YouTube, Vimeo,
