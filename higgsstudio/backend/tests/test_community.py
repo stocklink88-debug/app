@@ -4,7 +4,7 @@ from tests.conftest import upload
 
 def publicar(client, run_queue):
     job_id = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "una ballena voladora",
+        "model": "local-demo", "prompt": "una ballena voladora",
         "duration": 3, "resolution": "480p", "preset": "orbit-360"}).json()["job"]["id"]
     run_queue()
     asset = client.get(f"/api/jobs/{job_id}").json()["result"]["assets"][0]
@@ -47,7 +47,7 @@ def test_remezclar_devuelve_los_ajustes(client, user, run_queue):
     receta = client.get(f"/api/community/posts/{post['id']}/remix").json()
     assert "ballena" in receta["prompt"]
     assert receta["preset"] == "orbit-360"
-    assert receta["model"] == "higgs-dop-turbo"
+    assert receta["model"] == "local-demo"
     assert receta["aspect"]
 
 

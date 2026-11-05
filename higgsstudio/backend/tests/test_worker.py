@@ -5,7 +5,7 @@ from higgsstudio import db, worker
 def test_cancelar_devuelve_los_creditos(client, user):
     antes = client.get("/api/auth/me").json()["credits"]
     job_id = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "x", "duration": 3,
+        "model": "local-demo", "prompt": "x", "duration": 3,
         "resolution": "480p"}).json()["job"]["id"]
 
     assert client.get("/api/auth/me").json()["credits"] < antes
@@ -19,7 +19,7 @@ def test_cancelar_devuelve_los_creditos(client, user):
 
 def test_un_trabajo_terminado_no_se_cancela(client, user, run_queue):
     job_id = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "x", "duration": 3,
+        "model": "local-demo", "prompt": "x", "duration": 3,
         "resolution": "480p"}).json()["job"]["id"]
     run_queue()
     assert client.delete(f"/api/jobs/{job_id}").status_code == 400
@@ -35,7 +35,7 @@ def test_un_fallo_devuelve_los_creditos(client, user, run_queue, monkeypatch):
 
     antes = client.get("/api/auth/me").json()["credits"]
     job_id = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "x", "duration": 3,
+        "model": "local-demo", "prompt": "x", "duration": 3,
         "resolution": "480p"}).json()["job"]["id"]
     run_queue()
 
@@ -53,7 +53,7 @@ def test_reintentar_crea_un_trabajo_nuevo(client, user, run_queue, monkeypatch):
     monkeypatch.setattr(runner, "execute",
                         lambda *a, **k: (_ for _ in ()).throw(ProviderError("fallo")))
     job_id = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "x", "duration": 3,
+        "model": "local-demo", "prompt": "x", "duration": 3,
         "resolution": "480p"}).json()["job"]["id"]
     run_queue()
     monkeypatch.undo()
@@ -66,7 +66,7 @@ def test_reintentar_crea_un_trabajo_nuevo(client, user, run_queue, monkeypatch):
 
 def test_los_trabajos_a_medias_vuelven_a_la_cola(client, user):
     job_id = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "x", "duration": 3,
+        "model": "local-demo", "prompt": "x", "duration": 3,
         "resolution": "480p"}).json()["job"]["id"]
     db.update("jobs", job_id, {"status": "running"})
 
@@ -76,7 +76,7 @@ def test_los_trabajos_a_medias_vuelven_a_la_cola(client, user):
 
 def test_solo_un_hilo_coge_cada_trabajo(client, user):
     client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "x", "duration": 3,
+        "model": "local-demo", "prompt": "x", "duration": 3,
         "resolution": "480p"})
     primero = worker.claim_next()
     segundo = worker.claim_next()
@@ -86,7 +86,7 @@ def test_solo_un_hilo_coge_cada_trabajo(client, user):
 
 def test_no_se_toca_el_trabajo_de_otra_cuenta(client, user):
     job_id = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "prompt": "x", "duration": 3,
+        "model": "local-demo", "prompt": "x", "duration": 3,
         "resolution": "480p"}).json()["job"]["id"]
     client.post("/api/auth/logout")
     client.post("/api/auth/signup", json={"email": "z@z.com", "password": "contrasena123"})

@@ -6,9 +6,9 @@ from higgsstudio import credits, db, security
 
 
 def test_presupuesto_crece_con_duracion_y_resolucion():
-    corto = credits.quote("video", "higgs-dop-standard",
+    corto = credits.quote("video", "kling-3-pro",
                           {"duration": 3, "resolution": "480p"})
-    largo = credits.quote("video", "higgs-dop-standard",
+    largo = credits.quote("video", "kling-3-pro",
                           {"duration": 10, "resolution": "1080p"})
     assert largo["credits"] > corto["credits"]
     assert corto["credits"] >= 1

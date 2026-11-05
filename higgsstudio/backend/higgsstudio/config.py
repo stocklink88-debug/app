@@ -6,6 +6,7 @@ Eso permite probar el producto completo sin gastar un céntimo.
 """
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -47,6 +48,11 @@ class Settings(BaseSettings):
     elevenlabs_base_url: str = "https://api.elevenlabs.io/v1"
     elevenlabs_model: str = "eleven_multilingual_v2"
     elevenlabs_music_model: str = "music_v1"
+
+    # Repunta endpoints sin tocar código. Los catálogos de los proveedores
+    # cambian cada pocos meses; con esto se arregla en el .env. Formato:
+    # {"kling-3-pro": {"fal": {"t2v": "fal-ai/..."}}}
+    model_endpoints: str = ""
 
     # Mejora de prompts y guiones con un LLM (opcional).
     anthropic_api_key: str | None = None
@@ -97,6 +103,16 @@ class Settings(BaseSettings):
     @property
     def cors_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    def endpoint_overrides(self) -> dict:
+        """Lee MODEL_ENDPOINTS del entorno. Si está mal formado, se ignora."""
+        if not self.model_endpoints.strip():
+            return {}
+        try:
+            data = json.loads(self.model_endpoints)
+            return data if isinstance(data, dict) else {}
+        except json.JSONDecodeError:
+            return {}
 
     def ensure_dirs(self) -> None:
         for d in (self.data_dir, self.uploads_dir, self.assets_dir, self.jobs_dir, self.cache_dir):

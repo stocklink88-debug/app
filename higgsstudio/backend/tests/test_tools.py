@@ -76,7 +76,7 @@ def test_anuncio_completo(client, user, run_queue):
         "template": "problem-solution", "product_name": "Cafetera Aurora",
         "benefit": "café de especialidad en 40 segundos",
         "audience": "gente con prisa", "aspect": "9:16",
-        "resolution": "480p", "max_shots": 2, "model": "higgs-dop-turbo"})
+        "resolution": "480p", "max_shots": 2, "model": "local-demo"})
     assert response.status_code == 200, response.text
     job_id = response.json()["job"]["id"]
     run_queue()

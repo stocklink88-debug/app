@@ -256,7 +256,7 @@ def _ad_campaign(job: dict[str, Any], user: dict[str, Any],
 
     shots = script.get("shots", [])[: int(params.get("max_shots", 5))]
     aspect = params.get("aspect") or template.get("format", "9:16")
-    model_id = params.get("model") or "higgs-dop-turbo"
+    model_id = params.get("model") or "kling-2.5-turbo"
     product_assets = params.get("image_asset_ids") or product.get("asset_ids", [])
     clip_paths: list[Path] = []
     shot_assets: list[dict[str, Any]] = []

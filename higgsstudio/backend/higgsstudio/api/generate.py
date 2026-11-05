@@ -88,7 +88,7 @@ class AdBody(BaseModel):
     language: str = "es"
     aspect: str = "9:16"
     resolution: str = "720p"
-    model: str = "higgs-dop-turbo"
+    model: str = "kling-2.5-turbo"
     preset: str | None = None
     transition: str = "fundido"
     max_shots: int = Field(default=5, ge=2, le=8)

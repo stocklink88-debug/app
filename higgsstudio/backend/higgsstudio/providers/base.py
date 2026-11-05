@@ -56,7 +56,24 @@ class GenRequest:
         return str(self.extra.get("motion") or "static")
 
     def provider_model(self, provider: str) -> str | None:
-        return self.model.get("providers", {}).get(provider)
+        """Endpoint del proveedor para este modo.
+
+        En fal (y en Replicate) texto→vídeo e imagen→vídeo son rutas
+        distintas, así que `providers` puede ser un diccionario por modo.
+        Se admite también una cadena suelta o la clave "*" para los modelos
+        que usan un único endpoint para todo.
+        """
+        from ..config import get_settings
+
+        overrides = get_settings().endpoint_overrides()
+        entry = overrides.get(self.model["id"], {}).get(provider)
+        if entry is None:
+            entry = self.model.get("providers", {}).get(provider)
+        if entry is None:
+            return None
+        if isinstance(entry, str):
+            return entry
+        return entry.get(self.mode) or entry.get("*")
 
     def full_prompt(self) -> str:
         parts = [self.prompt.strip()]

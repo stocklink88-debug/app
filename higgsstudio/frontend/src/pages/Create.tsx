@@ -52,7 +52,7 @@ const MODE_OPTIONS: Record<Family, { value: string; label: string }[]> = {
 }
 
 const DEFAULT_MODEL: Record<Family, string> = {
-  video: 'higgs-dop-turbo', image: 'soul-2', speak: 'higgs-speak-v2', audio: 'voice-v3',
+  video: 'kling-2.5-turbo', image: 'soul-2', speak: 'flashtalk', audio: 'voice-v3',
 }
 
 const AUDIO_MODEL_FOR_MODE: Record<string, string> = {

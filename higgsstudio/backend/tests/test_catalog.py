@@ -41,6 +41,6 @@ def test_busqueda_de_presets():
 
 
 def test_buscadores():
-    assert find_model("higgs-dop-turbo")["family"] == "video"
+    assert find_model("kling-2.5-turbo")["family"] == "video"
     assert find_style("soul-realism")["group"] == "foto"
     assert find_model("inventado") is None

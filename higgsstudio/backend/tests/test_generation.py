@@ -17,7 +17,7 @@ def generar(client, run_queue, payload, endpoint="/api/generate/video"):
 def test_texto_a_video_con_preset(client, user, run_queue):
     saldo_inicial = user["credits"]
     job = generar(client, run_queue, {
-        "model": "higgs-dop-turbo", "prompt": "un dragón sobre Madrid",
+        "model": "local-demo", "prompt": "un dragón sobre Madrid",
         "duration": 3, "aspect": "9:16", "resolution": "480p",
         "preset": "crash-zoom-in", "seed": 7})
 
@@ -49,7 +49,7 @@ def test_la_semilla_hace_el_resultado_reproducible(client, user, run_queue, tmp_
     """
     from higgsstudio.providers.base import run_ffmpeg
 
-    base = {"model": "higgs-dop-turbo", "prompt": "mismo prompt",
+    base = {"model": "local-demo", "prompt": "mismo prompt",
             "duration": 3, "resolution": "480p", "seed": 1234}
     salidas = []
     for i, job in enumerate((generar(client, run_queue, base),
@@ -65,14 +65,14 @@ def test_la_semilla_hace_el_resultado_reproducible(client, user, run_queue, tmp_
 
 def test_imagen_a_video_necesita_imagen(client, user, run_queue, tiny_image):
     fallo = client.post("/api/generate/video", json={
-        "model": "higgs-dop-turbo", "mode": "i2v", "prompt": "anima esto",
+        "model": "local-demo", "mode": "i2v", "prompt": "anima esto",
         "resolution": "480p", "duration": 3})
     assert fallo.status_code == 400
     assert "imagen" in fallo.json()["detail"].lower()
 
     asset_id = upload(client, tiny_image)
     job = generar(client, run_queue, {
-        "model": "higgs-dop-turbo", "mode": "i2v", "prompt": "anima esto",
+        "model": "local-demo", "mode": "i2v", "prompt": "anima esto",
         "resolution": "480p", "duration": 3, "image_asset_ids": [asset_id]})
     assert job["status"] == "succeeded", job.get("error")
 
@@ -81,7 +81,7 @@ def test_primer_y_ultimo_fotograma(client, user, run_queue, tiny_image):
     a = upload(client, tiny_image)
     b = upload(client, tiny_image)
     job = generar(client, run_queue, {
-        "model": "higgs-dop-turbo", "mode": "frames", "prompt": "transición",
+        "model": "local-demo", "mode": "frames", "prompt": "transición",
         "resolution": "480p", "duration": 3,
         "image_asset_ids": [a], "end_image_asset_id": b})
     assert job["status"] == "succeeded", job.get("error")
@@ -115,7 +115,7 @@ def test_locucion_y_musica(client, user, run_queue):
 def test_avatar_que_habla(client, user, run_queue, tiny_image):
     asset_id = upload(client, tiny_image)
     job = generar(client, run_queue, {
-        "model": "higgs-speak-v2", "mode": "speak", "image_asset_ids": [asset_id],
+        "model": "local-speak", "mode": "speak", "image_asset_ids": [asset_id],
         "voice_id": "mateo", "duration": 5, "resolution": "720p",
         "extra": {"script": "Hola, soy un avatar de prueba."}},
         endpoint="/api/generate/speak")
@@ -127,7 +127,7 @@ def test_avatar_que_habla(client, user, run_queue, tiny_image):
 
 def test_el_plan_gratuito_lleva_marca_de_agua(client, user, run_queue):
     job = generar(client, run_queue, {
-        "model": "higgs-dop-turbo", "prompt": "prueba", "duration": 3,
+        "model": "local-demo", "prompt": "prueba", "duration": 3,
         "resolution": "480p"})
     params = db.row_to_dict(db.get("assets", job["result"]["assets"][0]["id"]))["params"]
     assert params["output_index"] == 0
@@ -139,7 +139,7 @@ def test_el_plan_gratuito_lleva_marca_de_agua(client, user, run_queue):
 
 def test_resolucion_por_encima_del_plan_se_rechaza(client, user):
     response = client.post("/api/generate/video", json={
-        "model": "higgs-dop-standard", "prompt": "x", "resolution": "1080p",
+        "model": "kling-3-pro", "prompt": "x", "resolution": "1080p",
         "duration": 3})
     assert response.status_code == 403
     assert "plan" in response.json()["detail"].lower()
@@ -148,14 +148,14 @@ def test_resolucion_por_encima_del_plan_se_rechaza(client, user):
 def test_sin_creditos_no_se_genera(client, user, run_queue):
     db.update("users", user["id"], {"credits": 1})
     response = client.post("/api/generate/video", json={
-        "model": "higgs-dop-standard", "prompt": "x", "duration": 5,
+        "model": "kling-3-pro", "prompt": "x", "duration": 5,
         "resolution": "720p"})
     assert response.status_code == 402
 
 
 def test_modelo_que_no_soporta_el_modo(client, user):
     response = client.post("/api/generate/video", json={
-        "model": "sora-2", "mode": "frames", "prompt": "x"})
+        "model": "kling-2.5-turbo", "mode": "frames", "prompt": "x"})
     assert response.status_code == 400
     assert "modo" in response.json()["detail"].lower()
 
@@ -170,7 +170,7 @@ def test_formato_no_soportado_por_el_modelo(client, user):
 
 def test_presupuesto_antes_de_generar(client, user):
     quote = client.post("/api/generate/quote", json={
-        "type": "video", "model": "higgs-dop-turbo", "duration": 5,
+        "type": "video", "model": "local-demo", "duration": 5,
         "resolution": "720p"}).json()
     assert quote["credits"] > 0
     assert quote["affordable"] is True
@@ -180,7 +180,7 @@ def test_presupuesto_antes_de_generar(client, user):
 def test_lote_de_variaciones(client, user, run_queue):
     response = client.post("/api/generate/batch", json={
         "type": "video",
-        "base": {"model": "higgs-dop-turbo", "duration": 3, "resolution": "480p"},
+        "base": {"model": "local-demo", "duration": 3, "resolution": "480p"},
         "prompts": ["gato", "perro"],
         "presets": ["orbit-360"],
     })
@@ -195,7 +195,7 @@ def test_lote_de_variaciones(client, user, run_queue):
 def test_lote_demasiado_grande(client, user):
     response = client.post("/api/generate/batch", json={
         "type": "video",
-        "base": {"model": "higgs-dop-turbo", "duration": 3, "resolution": "480p"},
+        "base": {"model": "local-demo", "duration": 3, "resolution": "480p"},
         "prompts": ["a"] * 5, "presets": ["orbit-360", "crash-zoom-in"],
         "seeds": [1, 2, 3],
     })

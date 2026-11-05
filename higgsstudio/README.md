@@ -32,10 +32,12 @@ máquina.
   360º, bullet time, dron FPV, vértigo, snorricam, derretir, desintegrar,
   glitch, pasarela, unboxing, found footage… Cada preset fija el movimiento,
   enriquece el prompt y sugiere duración y formato.
-- **44 modelos** en el catálogo (DoP, Kling, Veo, Sora, Hailuo, Seedance, Wan,
-  Ray, Gen-4, Pika, Hunyuan, Soul, Nano Banana, Seedream, FLUX, Ideogram,
-  Qwen, OmniHuman, InfiniteTalk, ElevenLabs, Topaz…) con sus modos,
-  resoluciones, duraciones y precio en créditos.
+- **46 modelos** en el catálogo: para vídeo, Kling 2.5 Turbo y 3.0, Seedance
+  2.5, Wan 3.0, Veo 3.1, Hailuo H3, FLUX 3, Grok Imagine, PixVerse V6 y
+  Gemini Omni; para imagen, Soul, Nano Banana, Seedream, FLUX, Ideogram y
+  Qwen; más voz, lipsync y herramientas. Cada uno con sus modos,
+  resoluciones, duraciones, **precio real por segundo** y coste en créditos.
+  El modelo por defecto es el más barato de la lista.
 - **45 estilos** de imagen agrupados en fotografía, cine, ilustración, diseño
   y mundos.
 - Generación **en lote**: cruza prompts × presets × semillas en una tanda.
@@ -149,16 +151,40 @@ El selector es automático: con `VIDEO_PROVIDER=auto` se usa fal si hay clave,
 si no Replicate, y si no el motor local. Puedes forzarlo poniendo
 `VIDEO_PROVIDER=replicate`, etc.
 
+**Lo que cuesta un vídeo de verdad** (precios de fal, noviembre de 2026; la
+ficha de cada modelo manda):
+
+| Modelo | $/segundo | Un plano de 5 s |
+|---|---|---|
+| Kling 2.5 Turbo | 0,07 | ~0,35 $ |
+| Kling 3.0 Standard | 0,084 | ~0,42 $ |
+| Kling 3.0 Pro | ~0,12 | ~0,60 $ |
+| Seedance 2.5 (con audio) | ~0,30 | ~1,50 $ |
+| Veo 3.1 (con audio) | 0,40 | ~2,00 $ |
+
+La app enseña el coste en créditos antes de generar, y 1 crédito ≈ 0,01 $ con
+`CREDIT_MULTIPLIER=1.0`.
+
 Algunas cosas **siempre** se hacen en local porque salen igual de bien, más
 rápido y gratis: montar tomas, reencuadrar y extender planos.
 
-> **Aviso sobre el mapeo de modelos.** Cada entrada del catálogo trae el
-> identificador del modelo en fal y en Replicate, y los parámetros se traducen
-> con un esquema común (`providers/payload.py`). Los proveedores cambian de
-> nombres y de campos a menudo: si un modelo concreto devuelve un error 422,
-> ajusta su entrada en `catalog/models.py` o pásale `extra.provider_input`
-> con los campos que ese modelo espera. Está pensado para que ese ajuste sea
-> de una línea.
+> **Aviso importante sobre el catálogo de modelos.** Los endpoints se leyeron
+> de las páginas de fal en noviembre de 2026 y **caducan rápido**: Sora 2 se
+> retiró en septiembre de 2026, Kling pasó de 2.5 a 3.0 y 4.0 en unos meses, y
+> Veo cambia de ruta cada poco. Dos salvaguardas:
+>
+> 1. Cada modelo mapea **un endpoint por modo**, porque en fal texto→vídeo e
+>    imagen→vídeo son rutas distintas:
+>    `"providers": {"fal": {"t2v": "...", "i2v": "..."}}`.
+> 2. Puedes repuntar cualquier endpoint **sin tocar código**, con
+>    `MODEL_ENDPOINTS` en el `.env`:
+>    `MODEL_ENDPOINTS={"kling-3-pro":{"fal":{"t2v":"fal-ai/kling-video/v4/text-to-video"}}}`
+>
+> Si un modelo devuelve 404, está retirado o renombrado: mira el catálogo vivo
+> en fal.ai/models y repúntalo. Si devuelve 422, el endpoint existe pero espera
+> otros campos: pásale `extra.provider_input` con lo que pida su ficha.
+> Los endpoints de **imagen** no se han verificado contra el catálogo actual;
+> los de vídeo y lipsync sí.
 
 ---
 

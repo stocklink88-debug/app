@@ -11,7 +11,7 @@ from higgsstudio.providers.payload import build
 
 def peticion(tmp_path, **kwargs) -> GenRequest:
     base = dict(job_id="j", type="video", mode="t2v",
-                model=find_model("higgs-dop-turbo"), workdir=tmp_path,
+                model=find_model("kling-2.5-turbo"), workdir=tmp_path,
                 prompt="un gato astronauta")
     base.update(kwargs)
     return GenRequest(**base)
@@ -115,3 +115,47 @@ def test_se_detectan_las_urls_del_resultado():
     tipos = dict((u.rsplit("/", 1)[1], k) for u, k in urls)
     assert tipos == {"a.mp4": "video", "b.png": "image",
                      "c.mp3": "audio", "d.glb": "model3d"}
+
+
+def test_cada_modo_tiene_su_endpoint(tmp_path, isolated_data):
+    """En fal, texto→vídeo e imagen→vídeo son rutas distintas."""
+    t2v = peticion(tmp_path, mode="t2v", model=find_model("kling-2.5-turbo"))
+    i2v = peticion(tmp_path, mode="i2v", model=find_model("kling-2.5-turbo"))
+    assert t2v.provider_model("fal").endswith("/text-to-video")
+    assert i2v.provider_model("fal").endswith("/image-to-video")
+    assert t2v.provider_model("fal") != i2v.provider_model("fal")
+
+
+def test_modo_sin_endpoint_devuelve_nada(tmp_path, isolated_data):
+    req = peticion(tmp_path, mode="frames", model=find_model("kling-2.5-turbo"))
+    assert req.provider_model("fal") is None
+
+
+def test_endpoint_comodin(tmp_path, isolated_data):
+    """Veo usa un único endpoint para todos sus modos."""
+    for modo in ("t2v", "i2v"):
+        req = peticion(tmp_path, mode=modo, model=find_model("veo-3.1"))
+        assert req.provider_model("fal") == "fal-ai/veo3.1"
+
+
+def test_se_puede_repuntar_un_endpoint_desde_el_entorno(tmp_path, isolated_data, monkeypatch):
+    """Cuando el proveedor renombra una ruta, se arregla en el .env."""
+    import json
+    monkeypatch.setenv("MODEL_ENDPOINTS", json.dumps(
+        {"kling-2.5-turbo": {"fal": {"t2v": "fal-ai/kling-video/v9/text-to-video"}}}))
+    config.reset_settings_cache()
+    req = peticion(tmp_path, mode="t2v", model=find_model("kling-2.5-turbo"))
+    assert req.provider_model("fal") == "fal-ai/kling-video/v9/text-to-video"
+
+
+def test_un_override_mal_escrito_no_rompe_nada(tmp_path, isolated_data, monkeypatch):
+    monkeypatch.setenv("MODEL_ENDPOINTS", "{esto no es json")
+    config.reset_settings_cache()
+    req = peticion(tmp_path, mode="t2v", model=find_model("kling-2.5-turbo"))
+    assert req.provider_model("fal").endswith("/text-to-video")
+
+
+def test_el_modelo_local_no_tiene_endpoints(tmp_path, isolated_data):
+    req = peticion(tmp_path, mode="t2v", model=find_model("local-demo"))
+    assert req.provider_model("fal") is None
+    assert resolve(req).name == "local"
